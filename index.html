@@ -69,6 +69,10 @@
     .control-line output { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
     .wide-range { display: block; width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
     .track-labels { display: flex; justify-content: space-between; color: #6e8896; font-size: 10px; margin-top: 8px; }
+    .effects-heading { border-top: 1px solid #293e4f; padding-top: 22px; margin-top: 25px; }
+    .effects-heading h3 { margin: 0 0 5px; font-size: 14px; letter-spacing: -.01em; }
+    .effects-heading p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .effects-heading + .control-group { margin-top: 21px; }
     .envelope-visual { width: 100%; margin: 22px 0 1px; border-radius: 13px; background: #102531; border: 1px solid #2b4453; padding: 16px; }
     .envelope-visual svg { display: block; width: 100%; height: 70px; }
     .tip { background: #18352f; border: 1px solid #315749; border-radius: 12px; margin-top: auto; padding: 15px; color: #bcdccb; font-size: 12px; line-height: 1.6; }
@@ -151,7 +155,7 @@
         </section>
 
         <section class="panel controls-panel" aria-labelledby="controlsTitle">
-          <div class="panel-heading"><div><h2 id="controlsTitle">Sound controls</h2><p class="subheading">Fine-tune how every note behaves.</p></div><span class="small-label">Envelope</span></div>
+          <div class="panel-heading"><div><h2 id="controlsTitle">Sound controls</h2><p class="subheading">Fine-tune how every note behaves.</p></div><span class="small-label">Envelope + FX</span></div>
           <div class="envelope-visual" aria-hidden="true"><svg viewBox="0 0 300 70" fill="none"><path d="M7 58H293M7 7V58" stroke="#375465" stroke-width="1" stroke-dasharray="3 5"/><path d="M10 58L55 10H194L282 58" stroke="#bcf99a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 58L55 10H194L282 58V60H10Z" fill="#bcf99a" fill-opacity=".08"/></svg></div>
           <div class="control-group">
             <div class="control-line"><label for="attack">Attack</label><output id="attackOut" for="attack">30 ms</output></div>
@@ -168,7 +172,18 @@
             <input class="wide-range" id="volume" type="range" min="0" max="100" step="1" value="65">
             <div class="track-labels"><span>Silent</span><span>Full</span></div>
           </div>
-          <div class="tip"><strong>Try this:</strong> Choose <strong>Organ</strong>, hold a few piano keys together, then raise harmonic 4 or 5. Hear how the colour of your chord changes.</div>
+          <div class="effects-heading"><h3>Distortion studio</h3><p>Fold the waveform into new harmonics, then add rich overdrive. Both effects start clean.</p></div>
+          <div class="control-group">
+            <div class="control-line"><label for="fold">Wave folding</label><output id="foldOut" for="fold">0%</output></div>
+            <input class="wide-range" id="fold" type="range" min="0" max="100" step="1" value="0">
+            <div class="track-labels"><span>Off</span><span>Deep folds</span></div>
+          </div>
+          <div class="control-group">
+            <div class="control-line"><label for="drive">Overdrive</label><output id="driveOut" for="drive">0%</output></div>
+            <input class="wide-range" id="drive" type="range" min="0" max="100" step="1" value="0">
+            <div class="track-labels"><span>Clean</span><span>Crunch</span></div>
+          </div>
+          <div class="tip"><strong>Try this:</strong> Choose <strong>Organ</strong>, raise wave folding to 45%, then bring in a little overdrive. Use the waveform preview to see how your sound changes.</div>
         </section>
       </div>
 
@@ -196,10 +211,14 @@
       };
       const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
       const shortcuts = ['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK'];
+      const VOICE_LEVEL = .24;
+      const START_LEAD = .008; // Give the audio renderer time to schedule a silent start.
       let levels = [...presetLevels.warm];
       let baseMidi = 48; // C3; piano is C3 through C5
       let audioCtx = null, master = null, compressor = null, periodicWave = null;
+      let foldCurve = null, driveCurve = null;
       const voices = new Map();
+      const releasingVoices = new Set();
       const heldKeys = new Set();
       const sliders = [];
       const piano = document.getElementById('piano');
@@ -209,9 +228,31 @@
       const attackInput = document.getElementById('attack');
       const releaseInput = document.getElementById('release');
       const volumeInput = document.getElementById('volume');
+      const foldInput = document.getElementById('fold');
+      const driveInput = document.getElementById('drive');
 
       function nameOf(midi) { return noteNames[midi % 12] + (Math.floor(midi / 12) - 1); }
       function frequencyOf(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+      function clamp01(value) { return Math.min(1, Math.max(0, value)); }
+      function smoothstep(value) { const x = clamp01(value); return x * x * (3 - 2 * x); }
+      function foldSample(sample) {
+        // Reflect the signal whenever it crosses +1 or -1, instead of clipping it.
+        const phase = ((sample + 1) % 4 + 4) % 4;
+        return 1 - Math.abs(phase - 2);
+      }
+      function makeShapeCurve(shape) {
+        const curve = new Float32Array(4097);
+        for (let i = 0; i < curve.length; i++) curve[i] = shape(i / (curve.length - 1) * 2 - 1);
+        return curve;
+      }
+      function smoothCurve(from, to) {
+        const curve = new Float32Array(65);
+        for (let i = 0; i < curve.length; i++) {
+          const fade = smoothstep(i / (curve.length - 1));
+          curve[i] = from + (to - from) * fade;
+        }
+        return curve;
+      }
       function ensureAudio() {
         if (!audioCtx) {
           const AC = window.AudioContext || window.webkitAudioContext;
@@ -226,6 +267,8 @@
           compressor.release.value = .18;
           master.connect(compressor);
           compressor.connect(audioCtx.destination);
+          foldCurve = makeShapeCurve(x => foldSample(x * 5));
+          driveCurve = makeShapeCurve(x => Math.tanh(x * 7));
           setVolume();
           updatePeriodicWave();
         }
@@ -239,6 +282,46 @@
         levels.forEach((value, index) => { imag[index + 1] = value / 100; });
         periodicWave = audioCtx.createPeriodicWave(real, imag, { disableNormalization: false });
         for (const voice of voices.values()) voice.osc.setPeriodicWave(periodicWave);
+        for (const voice of releasingVoices) voice.osc.setPeriodicWave(periodicWave);
+      }
+      function createEffect(type) {
+        const input = audioCtx.createGain();
+        const output = audioCtx.createGain();
+        const dry = audioCtx.createGain();
+        const pre = audioCtx.createGain();
+        const shaper = audioCtx.createWaveShaper();
+        const makeup = audioCtx.createGain();
+        const wet = audioCtx.createGain();
+        shaper.curve = type === 'fold' ? foldCurve : driveCurve;
+        shaper.oversample = '2x';
+        input.connect(dry); dry.connect(output);
+        input.connect(pre); pre.connect(shaper); shaper.connect(makeup); makeup.connect(wet); wet.connect(output);
+        const nodes = [input, output, dry, pre, shaper, makeup, wet];
+        return {
+          input, output, nodes,
+          setAmount(value, immediate = false) {
+            const amount = clamp01(value);
+            const preLevel = type === 'fold' ? .2 + amount * .8 : .14 + amount * .86;
+            const makeupLevel = type === 'fold' ? 1 : 1 / Math.tanh(preLevel * 7);
+            const target = [[dry.gain, 1 - amount], [wet.gain, amount], [pre.gain, preLevel], [makeup.gain, makeupLevel]];
+            const now = audioCtx.currentTime;
+            for (const [param, level] of target) {
+              if (immediate) param.value = level;
+              else param.setTargetAtTime(level, now, .018);
+            }
+          }
+        };
+      }
+      function updateEffects() {
+        const folding = Number(foldInput.value) / 100;
+        const overdrive = Number(driveInput.value) / 100;
+        document.getElementById('foldOut').textContent = foldInput.value + '%';
+        document.getElementById('driveOut').textContent = driveInput.value + '%';
+        for (const voice of [...voices.values(), ...releasingVoices]) {
+          voice.folder.setAmount(folding);
+          voice.overdrive.setAmount(overdrive);
+        }
+        drawWave();
       }
       function setVolume() {
         document.getElementById('volumeOut').textContent = volumeInput.value + '%';
@@ -252,21 +335,59 @@
       function activateKey(midi, on) {
         piano.querySelectorAll('[data-midi="' + midi + '"]').forEach(el => el.classList.toggle('active', on));
       }
+      function levelAt(voice, time) {
+        if (voice.releaseStart !== null) {
+          return voice.releaseFrom * (1 - smoothstep((time - voice.releaseStart) / voice.releaseSeconds));
+        }
+        return VOICE_LEVEL * smoothstep((time - voice.started) / voice.attackSeconds);
+      }
+      function releaseVoice(voice, seconds) {
+        const now = audioCtx.currentTime;
+        const current = levelAt(voice, now);
+        const gain = voice.amp.gain;
+        if (typeof gain.cancelAndHoldAtTime === 'function') {
+          try { gain.cancelAndHoldAtTime(now); }
+          catch (_) { gain.cancelScheduledValues(now); }
+        } else {
+          gain.cancelScheduledValues(now);
+        }
+        gain.setValueAtTime(current, now);
+        gain.setValueCurveAtTime(smoothCurve(current, 0), now, seconds);
+        voice.releaseStart = now;
+        voice.releaseFrom = current;
+        voice.releaseSeconds = seconds;
+        voice.osc.stop(now + seconds + .025); // Stop only after the gain has reached silence.
+        releasingVoices.add(voice);
+      }
       function noteOn(midi, source) {
         if (voices.has(midi)) { voices.get(midi).sources.add(source); return; }
         if (voices.size >= 12 || !ensureAudio()) return;
         const osc = audioCtx.createOscillator();
         const amp = audioCtx.createGain();
+        const folder = createEffect('fold');
+        const overdrive = createEffect('drive');
+        folder.setAmount(Number(foldInput.value) / 100, true);
+        overdrive.setAmount(Number(driveInput.value) / 100, true);
         osc.frequency.value = frequencyOf(midi);
         osc.setPeriodicWave(periodicWave);
-        osc.connect(amp);
+        osc.connect(folder.input);
+        folder.output.connect(overdrive.input);
+        overdrive.output.connect(amp);
         amp.connect(master);
         const now = audioCtx.currentTime;
+        const started = now + START_LEAD;
         const attackSeconds = Number(attackInput.value) / 1000;
         amp.gain.setValueAtTime(0, now);
-        amp.gain.linearRampToValueAtTime(.24, now + attackSeconds);
-        osc.start(now);
-        voices.set(midi, { osc, amp, started: now, attackSeconds, sources: new Set([source]) });
+        amp.gain.setValueCurveAtTime(smoothCurve(0, VOICE_LEVEL), started, attackSeconds);
+        osc.start(started);
+        const voice = { osc, amp, folder, overdrive, started, attackSeconds,
+          releaseStart: null, releaseFrom: 0, releaseSeconds: 0, sources: new Set([source]) };
+        osc.onended = () => {
+          osc.disconnect(); amp.disconnect();
+          for (const node of [...folder.nodes, ...overdrive.nodes]) node.disconnect();
+          releasingVoices.delete(voice);
+        };
+        voices.set(midi, voice);
         activateKey(midi, true);
         status();
       }
@@ -275,26 +396,18 @@
         if (!voice) return;
         voice.sources.delete(source);
         if (voice.sources.size) return;
-        const now = audioCtx.currentTime;
         const release = Number(releaseInput.value) / 1000;
-        if (typeof voice.amp.gain.cancelAndHoldAtTime === 'function') {
-          voice.amp.gain.cancelAndHoldAtTime(now);
-        } else {
-          const heldLevel = .24 * Math.min(1, Math.max(0, (now - voice.started) / voice.attackSeconds));
-          voice.amp.gain.cancelScheduledValues(now);
-          voice.amp.gain.setValueAtTime(heldLevel, now);
-        }
-        voice.amp.gain.linearRampToValueAtTime(0, now + release);
-        voice.osc.stop(now + release + .03);
-        voice.osc.onended = () => { voice.osc.disconnect(); voice.amp.disconnect(); };
+        releaseVoice(voice, release);
         voices.delete(midi);
         activateKey(midi, false);
         status();
       }
       function stopAll() {
-        for (const voice of voices.values()) {
-          try { voice.osc.stop(); } catch (_) { /* already stopped */ }
-          voice.osc.disconnect(); voice.amp.disconnect();
+        for (const voice of [...voices.values(), ...releasingVoices]) {
+          if (audioCtx?.state === 'running') releaseVoice(voice, .024);
+          else {
+            try { voice.osc.stop(); } catch (_) { /* already stopped */ }
+          }
         }
         voices.clear(); heldKeys.clear();
         piano.querySelectorAll('.key.active').forEach(key => key.classList.remove('active'));
@@ -400,12 +513,20 @@
           ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
         }
         const sum = Math.max(1, levels.reduce((acc, x) => acc + x / 100, 0));
+        const foldAmount = Number(foldInput.value) / 100;
+        const driveAmount = Number(driveInput.value) / 100;
         ctx.beginPath();
         for (let x = 0; x <= width; x += 1.5) {
           const phase = x / width * Math.PI * 6;
           let yValue = 0;
           for (let h = 0; h < 8; h++) yValue += levels[h] / 100 * Math.sin((h + 1) * phase);
-          const y = height / 2 - yValue / sum * (height * .41);
+          yValue /= sum;
+          const folded = foldSample(yValue * (1 + 4 * foldAmount));
+          yValue = yValue * (1 - foldAmount) + folded * foldAmount;
+          const gain = .98 + 6.02 * driveAmount;
+          const driven = Math.tanh(yValue * gain) / Math.tanh(gain);
+          yValue = yValue * (1 - driveAmount) + driven * driveAmount;
+          const y = height / 2 - yValue * (height * .41);
           if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
         ctx.strokeStyle = '#bdf99a'; ctx.lineWidth = 2.5;
@@ -420,6 +541,8 @@
       attackInput.addEventListener('input', () => { document.getElementById('attackOut').textContent = attackInput.value + ' ms'; });
       releaseInput.addEventListener('input', () => { document.getElementById('releaseOut').textContent = releaseInput.value + ' ms'; });
       volumeInput.addEventListener('input', setVolume);
+      foldInput.addEventListener('input', updateEffects);
+      driveInput.addEventListener('input', updateEffects);
       window.addEventListener('keydown', event => {
         if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
         const semitone = shortcuts.indexOf(event.code);
