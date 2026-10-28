@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a121c">
+  <meta name="description" content="Partial Lab is a playful additive synthesizer with a two-octave piano keyboard and eight harmonic controls.">
+  <title>Partial Lab — Additive Synthesizer</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a121c;
+      --panel: #122131;
+      --border: #2a3e4f;
+      --muted: #91a5b1;
+      --text: #edf6f5;
+      --accent: #bcf99a;
+      --cyan: #80e0e4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(ellipse 80% 56% at 83% -12%, #1c4650 0%, transparent 70%),
+                  radial-gradient(ellipse 70% 52% at -15% 55%, #192c40 0%, transparent 74%), var(--bg);
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+    .shell { max-width: 1190px; margin: 0 auto; padding: 30px 26px 52px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 13px; font-size: 15px; font-weight: 850; letter-spacing: .16em; }
+    .brand-mark { display: grid; place-items: center; width: 43px; height: 43px; color: #0d241a; background: var(--accent); border-radius: 13px; }
+    .brand-mark svg { width: 29px; height: 29px; }
+    .status { display: inline-flex; align-items: center; gap: 9px; color: #b5c7ce; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #667f8d; box-shadow: 0 0 0 5px #71879418; }
+    .status.playing .status-dot { background: var(--accent); box-shadow: 0 0 0 5px #bcf99a23, 0 0 16px #bcf99a; }
+    .hero { display: flex; justify-content: space-between; gap: 30px; align-items: end; margin: 48px 0 33px; }
+    .eyebrow { color: var(--accent); font-size: 12px; font-weight: 780; letter-spacing: .2em; text-transform: uppercase; }
+    h1 { font-size: clamp(38px, 6vw, 70px); font-weight: 760; letter-spacing: -.067em; line-height: 1.02; margin: 13px 0 17px; }
+    h1 em { font-style: normal; color: var(--accent); }
+    .hero p { color: #a7bbc7; font-size: 15px; line-height: 1.65; max-width: 560px; margin: 0; }
+    .pill { white-space: nowrap; border: 1px solid #406157; background: #18392f; border-radius: 999px; color: #c9f3d5; font-size: 12px; font-weight: 650; padding: 10px 14px; }
+    .panel { background: linear-gradient(148deg, #162737f0, #0f1c2bf5); border: 1px solid var(--border); border-radius: 23px; box-shadow: 0 18px 50px #01070c2b; }
+    .panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+    h2 { font-size: 17px; font-weight: 730; letter-spacing: -.02em; margin: 0 0 5px; }
+    .subheading { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.5; }
+    .small-label { font-size: 11px; color: #78919e; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(290px, .85fr); gap: 18px; }
+    .partials-panel { padding: 24px; }
+    .preset-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .preset { border: 1px solid #344d5d; background: #172938; color: #bbced6; font-size: 12px; font-weight: 650; padding: 10px 14px; border-radius: 10px; transition: background .15s, border-color .15s, transform .15s; }
+    .preset:hover { transform: translateY(-1px); background: #1b3545; }
+    .preset.active { background: var(--accent); color: #10251a; border-color: var(--accent); }
+    .scope { height: 150px; width: 100%; display: block; margin-top: 17px; background: linear-gradient(180deg, #142a35, #10232f); border: 1px solid #284758; border-radius: 13px; }
+    .scope-caption { display: flex; justify-content: space-between; margin: 10px 2px 22px; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: #789aa8; }
+    .harmonics { display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap: 5px; border-top: 1px solid #293e4f; padding-top: 18px; }
+    .harmonic { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 11px; }
+    .harmonic-value { color: var(--accent); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .harmonic input { width: 24px; height: 120px; writing-mode: vertical-lr; direction: rtl; accent-color: var(--accent); cursor: pointer; }
+    .harmonic-name { color: #bfced8; font-size: 11px; font-weight: 800; }
+    .harmonic-frequency { color: #708c9d; font-size: 10px; }
+    .controls-panel { padding: 24px; display: flex; flex-direction: column; }
+    .control-group { margin-top: 25px; }
+    .control-line { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 12px; }
+    .control-line label { font-size: 13px; font-weight: 650; }
+    .control-line output { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .wide-range { display: block; width: 100%; margin: 0; accent-color: var(--accent); cursor: pointer; }
+    .track-labels { display: flex; justify-content: space-between; color: #6e8896; font-size: 10px; margin-top: 8px; }
+    .envelope-visual { width: 100%; margin: 22px 0 1px; border-radius: 13px; background: #102531; border: 1px solid #2b4453; padding: 16px; }
+    .envelope-visual svg { display: block; width: 100%; height: 70px; }
+    .tip { background: #18352f; border: 1px solid #315749; border-radius: 12px; margin-top: auto; padding: 15px; color: #bcdccb; font-size: 12px; line-height: 1.6; }
+    .tip strong { color: var(--accent); }
+    .keyboard-panel { margin-top: 18px; padding: 23px 24px 20px; }
+    .keyboard-top { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .keyboard-actions { display: flex; align-items: center; gap: 10px; }
+    .octave-control { display: flex; align-items: center; border: 1px solid #3a5361; border-radius: 10px; overflow: hidden; background: #10212f; }
+    .octave-control button { border: 0; background: transparent; color: var(--text); width: 36px; height: 35px; font-size: 20px; }
+    .octave-control button:hover:not(:disabled) { background: #274253; }
+    .octave-control button:disabled { opacity: .3; cursor: not-allowed; }
+    .octave-control span { font-size: 12px; font-weight: 750; min-width: 72px; text-align: center; }
+    .piano-scroll { overflow-x: auto; overflow-y: hidden; padding: 4px 2px 12px; scrollbar-color: #4a6574 transparent; scrollbar-width: thin; }
+    .piano { display: flex; position: relative; height: 222px; width: 100%; min-width: 710px; touch-action: pan-x; user-select: none; -webkit-user-select: none; }
+    .key { -webkit-tap-highlight-color: transparent; touch-action: pan-x; }
+    .key.white { flex: 1; height: 100%; border: 1px solid #adbcc1; border-bottom: 7px solid #b9c7cc; border-radius: 0 0 10px 10px; background: linear-gradient(180deg,#f9fcfc,#dbe5e7); color: #5b7380; position: relative; z-index: 1; padding: 0; transition: background .07s, transform .07s; }
+    .key.white:first-child { border-top-left-radius: 6px; }
+    .key.white:nth-child(15) { border-top-right-radius: 6px; }
+    .key.white .note-label { position: absolute; bottom: 13px; left: 0; right: 0; font-size: 11px; font-weight: 700; }
+    .key.white.active { background: linear-gradient(180deg, #c8ffd5, #8ce2b9); border-bottom-color: #4fbb87; transform: translateY(3px); }
+    .key.black { position: absolute; top: 0; z-index: 2; width: 4.35%; height: 61%; border: 1px solid #08111a; border-bottom: 7px solid #03080d; border-radius: 0 0 8px 8px; background: linear-gradient(140deg,#293c4b,#09121b 70%); box-shadow: 2px 5px 8px #07131e75; transform: translateX(-50%); padding: 0; }
+    .key.black.active { background: linear-gradient(180deg, #9cebd5, #257e77); border-bottom-color: #1a4e53; }
+    .keyboard-help { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 8px; color: #90a8b4; font-size: 12px; }
+    kbd { border: 1px solid #3c5967; border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; background: #1b3040; color: #c6dce3; font: 11px ui-monospace, SFMono-Regular, monospace; }
+    footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px; padding: 24px 3px 0; color: #668290; font-size: 11px; }
+    @media (max-width: 880px) {
+      .workspace { grid-template-columns: minmax(0,1fr); }
+      .tip { margin-top: 27px; }
+      .hero { margin-top: 36px; }
+    }
+    @media (max-width: 560px) {
+      .shell { padding: 18px 13px 35px; }
+      .hero { display: block; margin: 35px 5px 27px; }
+      .hero .pill { display: inline-block; margin-top: 20px; }
+      .panel { border-radius: 17px; }
+      .partials-panel, .controls-panel, .keyboard-panel { padding: 18px 15px; }
+      .preset { padding: 9px 12px; }
+      .harmonic input { height: 107px; }
+      .piano { min-width: 710px; height: 196px; }
+      .keyboard-help { line-height: 1.8; }
+      header .status { font-size: 10px; }
+      .brand { font-size: 13px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16h4l3-8 5 17 5-21 5 20 3-8h3" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span> PARTIAL LAB</div>
+      <div id="audioStatus" class="status" aria-live="polite"><span class="status-dot"></span><span id="statusText">Ready to play</span></div>
+    </header>
+
+    <div class="hero">
+      <div>
+        <div class="eyebrow">Browser instrument / No. 001</div>
+        <h1>Shape your <em>sound.</em></h1>
+        <p>A pocket-sized additive synthesizer. Stack harmonics, sculpt your tone, and play melodies or chords on the piano below. No installation needed.</p>
+      </div>
+      <div class="pill">✦ 8 harmonics · polyphonic</div>
+    </div>
+
+    <main>
+      <div class="workspace">
+        <section class="panel partials-panel" aria-labelledby="harmonicsTitle">
+          <div class="panel-heading">
+            <div><h2 id="harmonicsTitle">Harmonic sculptor</h2><p class="subheading">Blend pure sine waves to build your own timbre.</p></div>
+            <span class="small-label" id="soundLabel">Warm</span>
+          </div>
+          <div class="preset-bar" role="group" aria-label="Sound presets">
+            <button class="preset" data-preset="pure" type="button">Pure</button>
+            <button class="preset active" data-preset="warm" type="button">Warm</button>
+            <button class="preset" data-preset="organ" type="button">Organ</button>
+            <button class="preset" data-preset="bright" type="button">Bright</button>
+            <button class="preset" data-preset="hollow" type="button">Hollow</button>
+          </div>
+          <canvas id="scope" class="scope" role="img" aria-label="Waveform preview, updated as you change the harmonics"></canvas>
+          <div class="scope-caption"><span>Waveform preview</span><span>Fundamental + overtones</span></div>
+          <div class="harmonics" id="harmonics" role="group" aria-label="Harmonic levels"></div>
+        </section>
+
+        <section class="panel controls-panel" aria-labelledby="controlsTitle">
+          <div class="panel-heading"><div><h2 id="controlsTitle">Sound controls</h2><p class="subheading">Fine-tune how every note behaves.</p></div><span class="small-label">Envelope</span></div>
+          <div class="envelope-visual" aria-hidden="true"><svg viewBox="0 0 300 70" fill="none"><path d="M7 58H293M7 7V58" stroke="#375465" stroke-width="1" stroke-dasharray="3 5"/><path d="M10 58L55 10H194L282 58" stroke="#bcf99a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 58L55 10H194L282 58V60H10Z" fill="#bcf99a" fill-opacity=".08"/></svg></div>
+          <div class="control-group">
+            <div class="control-line"><label for="attack">Attack</label><output id="attackOut" for="attack">30 ms</output></div>
+            <input class="wide-range" id="attack" type="range" min="5" max="1000" step="5" value="30">
+            <div class="track-labels"><span>Instant</span><span>Slow fade-in</span></div>
+          </div>
+          <div class="control-group">
+            <div class="control-line"><label for="release">Release</label><output id="releaseOut" for="release">300 ms</output></div>
+            <input class="wide-range" id="release" type="range" min="30" max="2000" step="10" value="300">
+            <div class="track-labels"><span>Short</span><span>Long tail</span></div>
+          </div>
+          <div class="control-group">
+            <div class="control-line"><label for="volume">Master volume</label><output id="volumeOut" for="volume">65%</output></div>
+            <input class="wide-range" id="volume" type="range" min="0" max="100" step="1" value="65">
+            <div class="track-labels"><span>Silent</span><span>Full</span></div>
+          </div>
+          <div class="tip"><strong>Try this:</strong> Choose <strong>Organ</strong>, hold a few piano keys together, then raise harmonic 4 or 5. Hear how the colour of your chord changes.</div>
+        </section>
+      </div>
+
+      <section class="panel keyboard-panel" aria-labelledby="keyboardTitle">
+        <div class="keyboard-top">
+          <div><h2 id="keyboardTitle">Play the keys</h2><p class="subheading">Tap, click, or use your computer keyboard. Hold notes for chords.</p></div>
+          <div class="keyboard-actions"><span class="small-label">Octave</span><div class="octave-control"><button type="button" id="octaveDown" aria-label="Move keyboard down one octave">−</button><span id="octaveText">C3–C5</span><button type="button" id="octaveUp" aria-label="Move keyboard up one octave">+</button></div></div>
+        </div>
+        <div class="piano-scroll" id="pianoScroll"><div class="piano" id="piano" role="group" aria-label="Two-octave piano keyboard"></div></div>
+        <div class="keyboard-help"><span>🎹 On mobile, swipe sideways to see the full keyboard.</span><span>Computer keys: <kbd>A</kbd> <kbd>W</kbd> <kbd>S</kbd> <kbd>E</kbd> <kbd>D</kbd> · · · <kbd>K</kbd></span></div>
+      </section>
+    </main>
+    <footer><span>PARTIAL LAB · Built for curious ears</span><span>Sound is generated locally in your browser — nothing is recorded or uploaded.</span></footer>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+      const presetLevels = {
+        pure:   [100, 0, 0, 0, 0, 0, 0, 0],
+        warm:   [100, 44, 22, 10, 6, 3, 1, 0],
+        organ:  [90, 78, 65, 47, 34, 24, 14, 8],
+        bright: [100, 82, 68, 55, 43, 34, 25, 18],
+        hollow: [100, 0, 66, 0, 38, 0, 23, 0]
+      };
+      const noteNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+      const shortcuts = ['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK'];
+      let levels = [...presetLevels.warm];
+      let baseMidi = 48; // C3; piano is C3 through C5
+      let audioCtx = null, master = null, compressor = null, periodicWave = null;
+      const voices = new Map();
+      const heldKeys = new Set();
+      const sliders = [];
+      const piano = document.getElementById('piano');
+      const scope = document.getElementById('scope');
+      const audioStatus = document.getElementById('audioStatus');
+      const statusText = document.getElementById('statusText');
+      const attackInput = document.getElementById('attack');
+      const releaseInput = document.getElementById('release');
+      const volumeInput = document.getElementById('volume');
+
+      function nameOf(midi) { return noteNames[midi % 12] + (Math.floor(midi / 12) - 1); }
+      function frequencyOf(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+      function ensureAudio() {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) { statusText.textContent = 'Audio not supported'; return false; }
+          audioCtx = new AC();
+          master = audioCtx.createGain();
+          compressor = audioCtx.createDynamicsCompressor();
+          compressor.threshold.value = -17;
+          compressor.knee.value = 12;
+          compressor.ratio.value = 3.5;
+          compressor.attack.value = .004;
+          compressor.release.value = .18;
+          master.connect(compressor);
+          compressor.connect(audioCtx.destination);
+          setVolume();
+          updatePeriodicWave();
+        }
+        if (audioCtx.state !== 'running') audioCtx.resume().catch(() => { statusText.textContent = 'Tap a key to enable sound'; });
+        return true;
+      }
+      function updatePeriodicWave() {
+        if (!audioCtx) return;
+        const real = new Float32Array(9);
+        const imag = new Float32Array(9);
+        levels.forEach((value, index) => { imag[index + 1] = value / 100; });
+        periodicWave = audioCtx.createPeriodicWave(real, imag, { disableNormalization: false });
+        for (const voice of voices.values()) voice.osc.setPeriodicWave(periodicWave);
+      }
+      function setVolume() {
+        document.getElementById('volumeOut').textContent = volumeInput.value + '%';
+        if (master && audioCtx) master.gain.setTargetAtTime(Number(volumeInput.value) / 100 * .62, audioCtx.currentTime, .012);
+      }
+      function status() {
+        const count = voices.size;
+        audioStatus.classList.toggle('playing', count > 0);
+        statusText.textContent = count ? count + (count === 1 ? ' note playing' : ' notes playing') : 'Ready to play';
+      }
+      function activateKey(midi, on) {
+        piano.querySelectorAll('[data-midi="' + midi + '"]').forEach(el => el.classList.toggle('active', on));
+      }
+      function noteOn(midi, source) {
+        if (voices.has(midi)) { voices.get(midi).sources.add(source); return; }
+        if (voices.size >= 12 || !ensureAudio()) return;
+        const osc = audioCtx.createOscillator();
+        const amp = audioCtx.createGain();
+        osc.frequency.value = frequencyOf(midi);
+        osc.setPeriodicWave(periodicWave);
+        osc.connect(amp);
+        amp.connect(master);
+        const now = audioCtx.currentTime;
+        const attackSeconds = Number(attackInput.value) / 1000;
+        amp.gain.setValueAtTime(0, now);
+        amp.gain.linearRampToValueAtTime(.24, now + attackSeconds);
+        osc.start(now);
+        voices.set(midi, { osc, amp, started: now, attackSeconds, sources: new Set([source]) });
+        activateKey(midi, true);
+        status();
+      }
+      function noteOff(midi, source) {
+        const voice = voices.get(midi);
+        if (!voice) return;
+        voice.sources.delete(source);
+        if (voice.sources.size) return;
+        const now = audioCtx.currentTime;
+        const release = Number(releaseInput.value) / 1000;
+        if (typeof voice.amp.gain.cancelAndHoldAtTime === 'function') {
+          voice.amp.gain.cancelAndHoldAtTime(now);
+        } else {
+          const heldLevel = .24 * Math.min(1, Math.max(0, (now - voice.started) / voice.attackSeconds));
+          voice.amp.gain.cancelScheduledValues(now);
+          voice.amp.gain.setValueAtTime(heldLevel, now);
+        }
+        voice.amp.gain.linearRampToValueAtTime(0, now + release);
+        voice.osc.stop(now + release + .03);
+        voice.osc.onended = () => { voice.osc.disconnect(); voice.amp.disconnect(); };
+        voices.delete(midi);
+        activateKey(midi, false);
+        status();
+      }
+      function stopAll() {
+        for (const voice of voices.values()) {
+          try { voice.osc.stop(); } catch (_) { /* already stopped */ }
+          voice.osc.disconnect(); voice.amp.disconnect();
+        }
+        voices.clear(); heldKeys.clear();
+        piano.querySelectorAll('.key.active').forEach(key => key.classList.remove('active'));
+        status();
+      }
+
+      function buildKeyboard() {
+        stopAll(); piano.replaceChildren();
+        let whitesSeen = 0;
+        const blackKeys = [];
+        for (let i = 0; i <= 24; i++) {
+          const midi = baseMidi + i;
+          const isBlack = [1, 3, 6, 8, 10].includes(midi % 12);
+          const key = document.createElement('button');
+          key.type = 'button';
+          key.className = 'key ' + (isBlack ? 'black' : 'white');
+          key.dataset.midi = String(midi);
+          key.setAttribute('aria-label', 'Play ' + nameOf(midi));
+          key.title = nameOf(midi);
+          if (isBlack) {
+            key.style.left = (whitesSeen / 15 * 100) + '%';
+            blackKeys.push(key);
+          } else {
+            whitesSeen++;
+            if (midi % 12 === 0) {
+              const label = document.createElement('span');
+              label.className = 'note-label';
+              label.textContent = nameOf(midi);
+              key.append(label);
+            }
+            piano.append(key);
+          }
+          key.addEventListener('pointerdown', event => {
+            if (event.pointerType === 'mouse' && event.button !== 0) return;
+            event.preventDefault();
+            try { key.setPointerCapture(event.pointerId); } catch (_) { /* capture optional */ }
+            noteOn(midi, 'pointer-' + event.pointerId);
+          });
+          const end = event => noteOff(midi, 'pointer-' + event.pointerId);
+          key.addEventListener('pointerup', end);
+          key.addEventListener('pointercancel', end);
+          key.addEventListener('lostpointercapture', end);
+        }
+        blackKeys.forEach(key => piano.append(key));
+        const low = Math.floor(baseMidi / 12) - 1;
+        document.getElementById('octaveText').textContent = 'C' + low + '–C' + (low + 2);
+        document.getElementById('octaveDown').disabled = baseMidi <= 36;
+        document.getElementById('octaveUp').disabled = baseMidi >= 60;
+      }
+
+      function buildHarmonics() {
+        const root = document.getElementById('harmonics');
+        for (let i = 0; i < 8; i++) {
+          const slot = document.createElement('div');
+          slot.className = 'harmonic';
+          const value = document.createElement('span');
+          value.className = 'harmonic-value';
+          const range = document.createElement('input');
+          range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '1';
+          range.value = String(levels[i]);
+          range.setAttribute('aria-label', 'Harmonic ' + (i + 1) + ' level');
+          const label = document.createElement('span'); label.className = 'harmonic-name'; label.textContent = 'H' + (i + 1);
+          const frequency = document.createElement('span'); frequency.className = 'harmonic-frequency'; frequency.textContent = (i + 1) + '×';
+          value.textContent = levels[i] + '%';
+          range.addEventListener('input', () => {
+            levels[i] = Number(range.value);
+            value.textContent = range.value + '%';
+            choosePreset(null);
+            updatePeriodicWave();
+            drawWave();
+          });
+          slot.append(value, range, label, frequency);
+          root.append(slot);
+          sliders.push({ range, value });
+        }
+      }
+      function choosePreset(name) {
+        document.querySelectorAll('.preset').forEach(button => button.classList.toggle('active', button.dataset.preset === name));
+        document.getElementById('soundLabel').textContent = name ? name[0].toUpperCase() + name.slice(1) : 'Custom';
+      }
+      function applyPreset(name) {
+        levels = [...presetLevels[name]];
+        sliders.forEach((slider, i) => { slider.range.value = String(levels[i]); slider.value.textContent = levels[i] + '%'; });
+        choosePreset(name); updatePeriodicWave(); drawWave();
+      }
+      function drawWave() {
+        const bounds = scope.getBoundingClientRect();
+        const width = bounds.width, height = bounds.height;
+        if (!width || !height) return;
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        scope.width = Math.round(width * pixelRatio);
+        scope.height = Math.round(height * pixelRatio);
+        const ctx = scope.getContext('2d');
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = '#244657'; ctx.lineWidth = 1;
+        for (let i = 1; i < 5; i++) {
+          const y = height * i / 5;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+        }
+        for (let i = 1; i < 12; i++) {
+          const x = width * i / 12;
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+        }
+        const sum = Math.max(1, levels.reduce((acc, x) => acc + x / 100, 0));
+        ctx.beginPath();
+        for (let x = 0; x <= width; x += 1.5) {
+          const phase = x / width * Math.PI * 6;
+          let yValue = 0;
+          for (let h = 0; h < 8; h++) yValue += levels[h] / 100 * Math.sin((h + 1) * phase);
+          const y = height / 2 - yValue / sum * (height * .41);
+          if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = '#bdf99a'; ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#bdf99a'; ctx.shadowBlur = 13;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
+
+      document.querySelectorAll('.preset').forEach(button => button.addEventListener('click', () => applyPreset(button.dataset.preset)));
+      document.getElementById('octaveDown').addEventListener('click', () => { if (baseMidi > 36) { baseMidi -= 12; buildKeyboard(); } });
+      document.getElementById('octaveUp').addEventListener('click', () => { if (baseMidi < 60) { baseMidi += 12; buildKeyboard(); } });
+      attackInput.addEventListener('input', () => { document.getElementById('attackOut').textContent = attackInput.value + ' ms'; });
+      releaseInput.addEventListener('input', () => { document.getElementById('releaseOut').textContent = releaseInput.value + ' ms'; });
+      volumeInput.addEventListener('input', setVolume);
+      window.addEventListener('keydown', event => {
+        if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+        const semitone = shortcuts.indexOf(event.code);
+        if (semitone < 0) return;
+        event.preventDefault();
+        if (heldKeys.has(event.code)) return;
+        heldKeys.add(event.code);
+        noteOn(baseMidi + 12 + semitone, 'keyboard-' + event.code);
+      });
+      window.addEventListener('keyup', event => {
+        const semitone = shortcuts.indexOf(event.code);
+        if (semitone < 0) return;
+        heldKeys.delete(event.code);
+        noteOff(baseMidi + 12 + semitone, 'keyboard-' + event.code);
+      });
+      window.addEventListener('blur', stopAll);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) stopAll(); });
+      window.addEventListener('resize', drawWave);
+      buildHarmonics(); buildKeyboard(); drawWave();
+    })();
+  </script>
+</body>
+</html>
