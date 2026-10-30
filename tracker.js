@@ -3,8 +3,19 @@
 
   const SOUND_KEY = "partial-lab-sound-v1";
   const TRACKER_KEY = "partial-lab-tracker-v1";
-  const TRACKS = 4;
-  const MAX_ROWS = 32;
+  const PAGE_SIZE = 64;
+  // Each duration is measured in quarter-note beats.
+  const DURATIONS = [
+    {id:"1/1",symbol:"𝅝",label:"Whole note",beats:4},
+    {id:"1/2",symbol:"𝅗𝅥",label:"Half note",beats:2},
+    {id:"1/4",symbol:"♩",label:"Quarter note",beats:1},
+    {id:"1/8",symbol:"♪",label:"Eighth note",beats:.5},
+    {id:"1/16",symbol:"𝅘𝅥𝅯",label:"Sixteenth note",beats:.25},
+    {id:"1/32",symbol:"𝅘𝅥𝅰",label:"Thirty-second note",beats:.125},
+    {id:"1/64",symbol:"𝅘𝅥𝅱",label:"Sixty-fourth note",beats:.0625}
+  ];
+  const DURATION_BEATS = Object.fromEntries(DURATIONS.map(d=>[d.id,d.beats]));
+  const DEFAULT_DURATION = "1/16";
   const PRESETS = {
     pure: [100, 0, 0, 0, 0, 0, 0, 0],
     warm: [100, 44, 22, 10, 6, 3, 1, 0],
@@ -16,12 +27,16 @@
   const $ = id => document.getElementById(id);
   const dom = {
     play: $("play"), stop: $("stop"), bpm: $("bpm"), bpmValue: $("bpmValue"),
-    length: $("patternLength"), tone: $("tone"), table: $("rows"), status: $("status"),
+    length: $("patternLength"), applyLength: $("applyLength"), tone: $("tone"),
+    table: $("rows"), header: $("trackerHeader"), status: $("status"),
+    addChannel: $("addChannel"), removeChannel: $("removeChannel"),
+    channelsLabel: $("channelsLabel"), prevPage: $("prevPage"), nextPage: $("nextPage"),
+    pageLabel: $("pageLabel"),
     dialog: $("noteDialog"), picker: $("notePicker"), gate: $("gatePicker"),
     velocity: $("velocityPicker"), editorLabel: $("editorLabel"),
     clear: $("clear"), demo: $("demo"), updateLabel: $("soundInfo")
   };
-  const emptyPattern = () => Array.from({length: MAX_ROWS}, () => Array(TRACKS).fill(null));
+  const emptyPattern = () => Array.from({length: pattern.length}, () => Array(channelCount).fill(null));
   const defaultSound = () => ({
     levels: [...PRESETS.warm], attack: 30, release: 300,
     volume: 65, fold: 0, drive: 0, preset: "warm"
@@ -33,8 +48,8 @@
   function save() {
     try {
       localStorage.setItem(TRACKER_KEY, JSON.stringify({
-        bpm: Number(dom.bpm.value), length: Number(dom.length.value),
-        tone: dom.tone.value, pattern
+        bpm: Number(dom.bpm.value), length: pattern.length, channels: channelCount,
+        tone: dom.tone.value, pattern, durations: stepDurations
       }));
     } catch (_) { /* storage may be disabled */ }
   }
@@ -47,26 +62,28 @@
     };
   }
   function examplePattern() {
-    const result = emptyPattern();
-    const bass = [48, null, null, null, 43, null, null, null, 45, null, null, null, 43, null, null, null];
-    const lead = [60, null, 64, null, 67, null, 64, null, 62, null, 65, null, 67, null, 65, null];
-    const upper = [null, null, 72, null, null, null, 74, null, null, null, 76, null, null, null, 74, null];
-    for (let i = 0; i < 16; i++) {
-      if (bass[i] !== null) result[i][0] = {midi: bass[i], gate: 100, velocity: 100};
-      if (lead[i] !== null) result[i][1] = {midi: lead[i], gate: 75, velocity: 85};
-      if (i === 0 || i === 8) result[i][2] = {midi: i === 0 ? 55 : 57, gate: 100, velocity: 65};
-      if (upper[i] !== null) result[i][3] = {midi: upper[i], gate: 50, velocity: 65};
-    }
-    return result;
+    const melody = [60,null,64,null,67,null,64,null,62,null,65,null,67,null,65,null];
+    return Array.from({length:pattern.length},(_,i)=>{
+      const row = Array(channelCount).fill(null);
+      if(melody[i % melody.length] !== null) row[0] = {midi:melody[i%melody.length],gate:75,velocity:85};
+      return row;
+    });
   }
   const stored = safeLoad(TRACKER_KEY);
-  let pattern = Array.isArray(stored?.pattern)
-    ? Array.from({length: MAX_ROWS}, (_, r) =>
-        Array.from({length: TRACKS}, (_, t) => sanitizeCell(stored.pattern[r]?.[t])))
-    : examplePattern();
-  dom.bpm.value = Number.isFinite(stored?.bpm) ? Math.min(220, Math.max(50, Math.round(stored.bpm))) : 120;
-  dom.length.value = stored?.length === 32 ? "32" : "16";
-  dom.tone.value = ["shared", ...Object.keys(PRESETS)].includes(stored?.tone) ? stored.tone : "shared";
+  const storedRows = Array.isArray(stored?.pattern) ? stored.pattern : null;
+  const savedLength = Number.isSafeInteger(stored?.length) && stored.length >= 1 ? stored.length : 16;
+  // Existing saved 4-channel patterns are retained; a new pattern starts with one channel.
+  let channelCount = Number.isSafeInteger(stored?.channels) && stored.channels >= 1
+    ? stored.channels : (storedRows && Array.isArray(storedRows[0]) && storedRows[0].length >= 1
+        ? storedRows[0].length : 1);
+  let pattern = Array.from({length:savedLength},(_,r)=>
+    Array.from({length:channelCount},(_,t)=>sanitizeCell(storedRows?.[r]?.[t])));
+  let stepDurations = Array.from({length:savedLength},(_,r)=>
+    DURATION_BEATS[stored?.durations?.[r]] ? stored.durations[r] : DEFAULT_DURATION);
+  if(!storedRows) pattern = examplePattern();
+  dom.bpm.value = Number.isFinite(stored?.bpm) ? Math.min(220,Math.max(50,Math.round(stored.bpm))) : 120;
+  dom.length.value = String(savedLength);
+  dom.tone.value = ["shared",...Object.keys(PRESETS)].includes(stored?.tone) ? stored.tone : "shared";
 
   const noteLabel = midi => NOTE_NAMES[midi % 12] + "-" + (Math.floor(midi / 12) - 1);
   const noteFrequency = midi => 440 * Math.pow(2, (midi - 69) / 12);
@@ -85,6 +102,7 @@
   let queuedRows = [];
   let currentSound = defaultSound();
   let editRow = -1, editTrack = -1;
+  let page = 0;
 
   function readSound() {
     const storedSound = safeLoad(SOUND_KEY);
@@ -105,46 +123,66 @@
   }
 
   function render() {
-    const total = Number(dom.length.value);
-    const fragment = document.createDocumentFragment();
-    for (let row = 0; row < total; row++) {
-      const tr = document.createElement("tr");
-      tr.dataset.step = String(row);
-      if (row % 4 === 0) tr.classList.add("beat");
-      const index = document.createElement("th");
-      index.scope = "row";
-      index.textContent = row.toString(16).toUpperCase().padStart(2, "0");
-      tr.append(index);
-      for (let track = 0; track < TRACKS; track++) {
-        const td = document.createElement("td");
-        const button = document.createElement("button");
-        const note = pattern[row][track];
-        button.type = "button";
-        button.className = "note-cell" + (note ? " filled" : "");
-        button.dataset.row = String(row);
-        button.dataset.track = String(track);
-        button.textContent = note ? noteLabel(note.midi) : "· · ·";
-        button.setAttribute("aria-label", "Step " + (row + 1) + ", channel " + (track + 1)
-          + ": " + (note ? noteLabel(note.midi) : "empty") + ". Edit note");
-        button.title = note ? "Gate " + note.gate + "% · Velocity " + note.velocity + "%" : "Add note";
-        td.append(button);
-        tr.append(td);
+    const count = pattern.length, pages = Math.ceil(count/PAGE_SIZE);
+    page = Math.max(0,Math.min(page,pages-1));
+    const head = document.createDocumentFragment();
+    for(const name of ["Step","Length",...Array.from({length:channelCount},(_,i)=>"CH "+(i+1))]){
+      const th=document.createElement("th");
+      th.scope="col";th.textContent=name;head.append(th);
+    }
+    dom.header.replaceChildren(head);
+    dom.channelsLabel.textContent = channelCount+(channelCount===1?" channel":" channels");
+    dom.removeChannel.disabled = channelCount===1;
+    dom.pageLabel.textContent = "Steps "+(page*PAGE_SIZE+1)+"–"+Math.min(count,(page+1)*PAGE_SIZE)+" of "+count;
+    dom.prevPage.disabled=page===0;dom.nextPage.disabled=page>=pages-1;
+    const fragment=document.createDocumentFragment();
+    for(let row=page*PAGE_SIZE;row<Math.min(count,(page+1)*PAGE_SIZE);row++){
+      const tr=document.createElement("tr");tr.dataset.step=String(row);
+      if(row%4===0)tr.classList.add("beat");
+      const index=document.createElement("th");index.scope="row";
+      index.textContent=row.toString(16).toUpperCase().padStart(2,"0");
+      index.title="Step "+(row+1);tr.append(index);
+      const durationCell=document.createElement("td");
+      const select=document.createElement("select");select.className="step-length";
+      select.dataset.row=String(row);
+      select.setAttribute("aria-label","Step "+(row+1)+" musical duration");
+      for(const duration of DURATIONS){
+        const option=document.createElement("option");option.value=duration.id;
+        option.textContent=duration.symbol+" "+duration.id;
+        option.title=duration.label;select.append(option);
+      }
+      select.value=stepDurations[row];durationCell.append(select);tr.append(durationCell);
+      for(let track=0;track<channelCount;track++){
+        const td=document.createElement("td"), button=document.createElement("button");
+        const note=pattern[row][track];button.type="button";
+        button.className="note-cell"+(note?" filled":"");
+        button.dataset.row=String(row);button.dataset.track=String(track);
+        button.textContent=note?noteLabel(note.midi):"· · ·";
+        button.setAttribute("aria-label","Step "+(row+1)+", channel "+(track+1)
+          +": "+(note?noteLabel(note.midi):"empty")+". Edit note");
+        button.title=note?"Gate "+note.gate+"% · Velocity "+note.velocity+"%":"Add note";
+        td.append(button);tr.append(td);
       }
       fragment.append(tr);
     }
     dom.table.replaceChildren(fragment);
-    markRow(displayedRow);
+    markRow(displayedRow,false);
   }
 
-  function markRow(row) {
-    displayedRow = row;
-    for (const tr of dom.table.rows) tr.classList.toggle("active-step", Number(tr.dataset.step) === row);
-    if (row >= 0) {
-      const active = dom.table.rows[row];
-      if (active) {
-        const box = active.getBoundingClientRect();
-        const parent = active.closest(".grid-scroll").getBoundingClientRect();
-        if (box.top < parent.top + 45 || box.bottom > parent.bottom - 12) active.scrollIntoView({block: "nearest"});
+  function markRow(row, follow=true){
+    displayedRow=row;
+    if(follow && row>=0 && Math.floor(row/PAGE_SIZE)!==page){
+      page=Math.floor(row/PAGE_SIZE);render();
+    }
+    const previous=dom.table.querySelector("tr.active-step");
+    if(previous)previous.classList.remove("active-step");
+    const active=row>=0?dom.table.querySelector('tr[data-step="'+row+'"]'):null;
+    if(active){
+      active.classList.add("active-step");
+      if(follow){
+        const box=active.getBoundingClientRect();
+        const parent=active.closest(".grid-scroll").getBoundingClientRect();
+        if(box.top<parent.top+45||box.bottom>parent.bottom-12)active.scrollIntoView({block:"nearest"});
       }
     }
   }
@@ -154,6 +192,14 @@
     option.value = String(midi); option.textContent = noteLabel(midi);
     dom.picker.append(option);
   }
+  dom.table.addEventListener("change",event=>{
+    const select=event.target.closest("select.step-length");
+    if(!select)return;
+    const row=Number(select.dataset.row);
+    if(Number.isInteger(row)&&row>=0&&row<pattern.length&&DURATION_BEATS[select.value]){
+      stepDurations[row]=select.value;save();
+    }
+  });
   dom.table.addEventListener("click", event => {
     const button = event.target.closest("button[data-row]");
     if (!button) return;
@@ -186,10 +232,58 @@
     dom.bpmValue.textContent = dom.bpm.value + " BPM";
     save();
   });
-  dom.length.addEventListener("change", () => { stop(); render(); save(); });
-  dom.tone.addEventListener("change", () => { readSound(); save(); });
-  dom.clear.addEventListener("click", () => { stop(); pattern = emptyPattern(); render(); save(); });
-  dom.demo.addEventListener("click", () => { stop(); pattern = examplePattern(); render(); save(); });
+  function resizePattern(){
+    const newLength=Number(dom.length.value);
+    if(!Number.isSafeInteger(newLength)||newLength<1){
+      dom.status.textContent="Enter a positive whole number of steps.";
+      dom.length.value=String(pattern.length);return;
+    }
+    if(newLength===pattern.length)return;
+    const oldPattern=pattern,oldDurations=stepDurations,oldLength=oldPattern.length;
+    try{
+      pattern=Array.from({length:newLength},(_,i)=>oldPattern[i%oldLength].map(note=>note?{...note}:null));
+      stepDurations=Array.from({length:newLength},(_,i)=>oldDurations[i%oldLength]);
+    }catch(_){
+      pattern=oldPattern;stepDurations=oldDurations;
+      dom.status.textContent="This number of steps is too large for this device.";
+      dom.length.value=String(oldLength);return;
+    }
+    stop();page=0;render();save();
+    dom.status.textContent="Pattern resized to "+newLength+" steps.";
+  }
+  dom.applyLength.addEventListener("click",resizePattern);
+  dom.length.addEventListener("keydown",event=>{
+    if(event.key==="Enter"){event.preventDefault();resizePattern();}
+  });
+  dom.length.addEventListener("change",resizePattern);
+  dom.addChannel.addEventListener("click",()=>{
+    stop();channelCount++;
+    for(const row of pattern)row.push(null);
+    render();save();
+  });
+  dom.removeChannel.addEventListener("click",()=>{
+    if(channelCount<=1)return;
+    const occupied=pattern.some(row=>row[channelCount-1]!==null);
+    if(occupied&&!window.confirm("Remove channel "+channelCount+" and all its notes?"))return;
+    stop();channelCount--;
+    for(const row of pattern)row.pop();
+    render();save();
+  });
+  dom.prevPage.addEventListener("click",()=>{
+    if(page>0){page--;render();}
+  });
+  dom.nextPage.addEventListener("click",()=>{
+    if((page+1)*PAGE_SIZE<pattern.length){page++;render();}
+  });
+  dom.tone.addEventListener("change",()=>{readSound();save();});
+  dom.clear.addEventListener("click",()=>{
+    stop();pattern=emptyPattern();render();save();
+  });
+  dom.demo.addEventListener("click",()=>{
+    stop();pattern=examplePattern();
+    stepDurations=Array(pattern.length).fill(DEFAULT_DURATION);
+    render();save();
+  });
 
   function shapeCurve(fn) {
     const curve = new Float32Array(4097);
@@ -271,17 +365,17 @@
       for (const node of [...folder.nodes, ...overdrive.nodes]) node.disconnect();
     };
   }
-  function stepSeconds() { return 60 / Number(dom.bpm.value) / 4; }
+  function stepSeconds(row){return 60/Number(dom.bpm.value)*DURATION_BEATS[stepDurations[row]];}
   function schedule() {
     if (!playing || !audio || audio.state !== "running") return;
     const limit = audio.currentTime + .12;
     while (nextTime < limit) {
-      const interval = stepSeconds();
-      const row = nextRow;
+      const row=nextRow;
+      const interval=stepSeconds(row);
       for (const note of pattern[row]) scheduleNote(note, nextTime, interval);
       queuedRows.push({row, when: nextTime});
       nextTime += interval;
-      nextRow = (nextRow + 1) % Number(dom.length.value);
+      nextRow = (nextRow + 1) % pattern.length;
     }
   }
   function animate() {
