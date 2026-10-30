@@ -17,17 +17,24 @@ nav a{padding:9px 17px;border-radius:9px;font-weight:700;font-size:13px}nav a[ar
 button.ghost{background:#213646;color:#e4f0f1;border:1px solid #4a6471;font-weight:750}
 button.primary,button.ghost{padding:11px 17px;border-radius:11px}button:disabled{opacity:.4;cursor:not-allowed}
 .tempo{flex:1;min-width:200px}.tempo label{display:flex;justify-content:space-between;font-weight:700;margin-bottom:9px}.tempo output{color:var(--lime)}input[type=range]{width:100%;accent-color:var(--lime)}
+.step-setting{display:flex;flex-direction:column;gap:7px;font-weight:700}
+.step-setting .step-entry{display:flex;gap:8px;align-items:center}
+.step-setting input[type=number]{min-width:75px;width:95px;padding:10px 12px;background:#172c3b;color:#eff7f7;border:1px solid #486374;border-radius:9px}
+.channel-actions,.pager{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.channel-actions .muted{padding:0 6px}
+.pager{justify-content:center;margin-top:18px}
+.step-length{background:#1a3441;color:#d8ecde;padding:8px 6px;border:1px solid #466273;border-radius:8px;min-width:108px;width:100%;font-size:13px}
 .selectbox{display:flex;flex-direction:column;gap:9px;font-weight:700}.selectbox select,.editor select{padding:10px 14px;border:1px solid #486374;background:#172c3b;color:#eff7f7;border-radius:9px;min-width:105px}
 .actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:space-between;align-items:center}.actions h2{font-size:18px;margin:0}.actions .right{display:flex;flex-wrap:wrap;gap:9px}.muted{color:var(--muted);font-size:12px;line-height:1.5}
 .grid-scroll{overflow:auto;max-height:630px;border:1px solid var(--edge);border-radius:12px;margin-top:17px}
-table{border-collapse:separate;border-spacing:0;width:100%;min-width:560px;table-layout:fixed}
+table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;table-layout:auto}
 th,td{border-bottom:1px solid #284253;border-right:1px solid #284253;text-align:center;padding:5px}
 thead th{position:sticky;top:0;z-index:3;background:#20394a;color:#c4d8da;height:42px}
-th:first-child{width:55px}td:last-child,th:last-child{border-right:0}
+th:first-child{width:55px}thead th:nth-child(2){min-width:120px}td:last-child,th:last-child{border-right:0}
 tbody th{color:#86a8b2;font-family:ui-monospace,monospace;background:#142737;font-weight:750}
 tbody tr.beat th,tbody tr.beat td{border-top:2px solid #527161}
 tbody tr.active-step th,tbody tr.active-step td{background:#244737}
-.note-cell{display:block;width:100%;min-height:36px;background:#142837;border:1px solid transparent;color:#6d8a98;border-radius:7px;font:700 13px ui-monospace,monospace;touch-action:manipulation}
+.note-cell{display:block;width:100%;min-width:90px;min-height:36px;background:#142837;border:1px solid transparent;color:#6d8a98;border-radius:7px;font:700 13px ui-monospace,monospace;touch-action:manipulation}
 .note-cell.filled{color:#c7fba9;background:#254338;border-color:#3b6950}
 .note-cell:hover{border-color:var(--cyan)}
 tbody tr.active-step .note-cell{box-shadow:inset 0 0 0 1px #9ef3a0}
@@ -43,26 +50,28 @@ footer{padding-top:22px;color:#89a6b1;font-size:12px}
 </style></head>
 <body><div class="shell">
 <header><a href="./" class="logo"><span aria-hidden="true">∿</span>PARTIAL LAB</a><nav aria-label="Pages"><a href="./">Synth</a><a href="tracker.html" aria-current="page">Tracker</a></nav></header>
-<section class="hero"><div class="eyebrow">Pattern lab / No. 002</div><h1>Make a <em>sequence.</em></h1><p>Program notes across four channels in a classic vertical tracker. Each row is a sixteenth note; use the tempo slider to change playback speed. Tap a cell to add or edit a note.</p></section>
+<section class="hero"><div class="eyebrow">Pattern lab / No. 002</div><h1>Make a <em>sequence.</em></h1><p>Build patterns with any number of steps and add as many channels as you need. Choose a musical duration for each step, then use the tempo slider to change playback speed.</p></section>
 <main>
 <section class="panel" aria-label="Playback controls">
 <div class="toolbar">
 <div class="transport"><button id="play" class="primary" type="button">▶ Play</button><button id="stop" class="ghost" type="button" disabled>■ Stop</button></div>
 <div class="tempo"><label for="bpm">Tempo <output id="bpmValue">120 BPM</output></label><input type="range" id="bpm" min="50" max="220" step="1" value="120"></div>
-<label class="selectbox" for="patternLength">Steps<select id="patternLength"><option value="16">16</option><option value="32">32</option></select></label>
+<div class="step-setting"><label for="patternLength">Pattern steps</label><div class="step-entry"><input id="patternLength" type="number" min="1" step="1" inputmode="numeric" value="16" aria-describedby="lengthHelp"><button id="applyLength" type="button" class="ghost">Set</button></div></div>
 <span id="status" class="muted" role="status">Stopped</span>
 </div></section>
 <section class="panel sound-line" aria-label="Sound source"><label class="selectbox" for="tone">Tone<select id="tone"><option value="shared">Synth settings</option><option value="pure">Pure</option><option value="warm">Warm</option><option value="organ">Organ</option><option value="bright">Bright</option><option value="hollow">Hollow</option></select></label>
 <p class="muted" id="soundInfo">Using the sound designed on the Synth page</p><a class="ghost" href="./" style="padding:10px 14px;border-radius:10px;background:#203646">Edit synth →</a></section>
 <section class="panel" aria-label="Tracker pattern">
-<div class="actions"><div><h2>Pattern 01</h2><span class="muted">Four polyphonic channels · C3 to C6 · Each note has gate and velocity</span></div><div class="right"><button class="ghost" id="demo" type="button">Load demo</button><button class="ghost" id="clear" type="button">Clear pattern</button></div></div>
-<div class="grid-scroll"><table aria-label="Tracker sequencer pattern"><thead><tr><th scope="col">Step</th><th scope="col">CH 1</th><th scope="col">CH 2</th><th scope="col">CH 3</th><th scope="col">CH 4</th></tr></thead><tbody id="rows"></tbody></table></div>
-<p class="muted">Tap any cell to enter a note. Patterns and tempo are saved in this browser. Changing the step count stops playback. The default pattern is a playable demonstration.</p>
+<div class="actions"><div><h2>Pattern 01</h2><span class="muted">Pitch C2–C6 · Duration column sets the time per step · Note gate controls how long each pitch sounds</span></div><div class="right"><button class="ghost" id="demo" type="button">Load demo</button><button class="ghost" id="clear" type="button">Clear pattern</button></div></div>
+<div class="channel-actions" style="margin-top:18px"><span class="muted" id="channelsLabel">1 channel</span><button class="ghost" id="addChannel" type="button">+ Add channel</button><button class="ghost" id="removeChannel" type="button" disabled>− Remove last</button></div>
+<div class="grid-scroll"><table aria-label="Tracker sequencer pattern"><thead><tr id="trackerHeader"><th scope="col">Step</th><th scope="col">Length</th><th scope="col">CH 1</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="pager"><button class="ghost" id="prevPage" type="button" disabled>← Previous</button><span class="muted" id="pageLabel">Steps 1–16 of 16</span><button class="ghost" id="nextPage" type="button" disabled>Next →</button></div>
+<p class="muted" id="lengthHelp">Enter any positive whole number of steps. Increasing the length repeats your current pattern and step durations. Shortening removes steps at the end. Patterns, channels, durations and tempo are saved in this browser. For large patterns, use the page controls to browse 64 steps at a time.</p>
 </section></main>
 <footer>PARTIAL LAB · Sound generated locally with Web Audio · No uploads or account needed</footer></div>
 <dialog id="noteDialog"><form id="noteForm" class="editor"><h2>Edit note</h2><p id="editorLabel">Step 1 · Channel 1</p>
 <label for="notePicker">Pitch<select id="notePicker"><option value="">— Rest (no note) —</option></select></label>
-<label for="gatePicker">Note length<select id="gatePicker"><option value="25">25% of step</option><option value="50">50% of step</option><option value="75" selected>75% of step</option><option value="100">100% of step</option></select></label>
+<label for="gatePicker">Note gate (percentage of step)<select id="gatePicker"><option value="25">25% of step</option><option value="50">50% of step</option><option value="75" selected>75% of step</option><option value="100">100% of step</option></select></label>
 <label for="velocityPicker">Velocity<select id="velocityPicker"><option value="40">40% · Soft</option><option value="65">65%</option><option value="85" selected>85%</option><option value="100">100% · Strong</option></select></label>
 <div class="dialog-actions"><button type="button" class="ghost" id="removeNote">Remove</button><button type="button" class="ghost" id="cancelNote">Cancel</button><button class="primary" type="submit">Save note</button></div></form></dialog>
 <script src="tracker.js"></script>
