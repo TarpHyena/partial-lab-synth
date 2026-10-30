@@ -31,6 +31,10 @@
     button:focus-visible, input:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
     .shell { max-width: 1190px; margin: 0 auto; padding: 30px 26px 52px; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .top-nav { display:flex; gap:5px; border:1px solid #344f60; border-radius:11px; padding:4px; background:#142635; }
+    .top-nav a { font-size:12px; color:#c8d8df; font-weight:700; padding:8px 13px; text-decoration:none; border-radius:8px; }
+    .top-nav a[aria-current="page"] { background:var(--accent); color:#142719; }
+    .top-nav a:not([aria-current="page"]):hover { background:#2b4656; }
     .brand { display: flex; align-items: center; gap: 13px; font-size: 15px; font-weight: 850; letter-spacing: .16em; }
     .brand-mark { display: grid; place-items: center; width: 43px; height: 43px; color: #0d241a; background: var(--accent); border-radius: 13px; }
     .brand-mark svg { width: 29px; height: 29px; }
@@ -123,6 +127,7 @@
   <div class="shell">
     <header>
       <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M2 16h4l3-8 5 17 5-21 5 20 3-8h3" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span> PARTIAL LAB</div>
+      <nav class="top-nav" aria-label="Pages"><a href="./" aria-current="page">Synth</a><a href="tracker.html">Tracker</a></nav>
       <div id="audioStatus" class="status" aria-live="polite"><span class="status-dot"></span><span id="statusText">Ready to play</span></div>
     </header>
 
@@ -202,6 +207,7 @@
   <script>
     (() => {
       'use strict';
+      const SOUND_KEY = "partial-lab-sound-v1";
       const presetLevels = {
         pure:   [100, 0, 0, 0, 0, 0, 0, 0],
         warm:   [100, 44, 22, 10, 6, 3, 1, 0],
@@ -213,7 +219,23 @@
       const shortcuts = ['KeyA','KeyW','KeyS','KeyE','KeyD','KeyF','KeyT','KeyG','KeyY','KeyH','KeyU','KeyJ','KeyK'];
       const VOICE_LEVEL = .24;
       const START_LEAD = .008; // Give the audio renderer time to schedule a silent start.
-      let levels = [...presetLevels.warm];
+      function savedSound() {
+        try { return JSON.parse(localStorage.getItem(SOUND_KEY) || "null"); }
+        catch (_) { return null; }
+      }
+      const previousSound = savedSound();
+      let levels = Array.isArray(previousSound?.levels) && previousSound.levels.length === 8
+        && previousSound.levels.every(value => Number.isFinite(value) && value >= 0 && value <= 100)
+        ? [...previousSound.levels] : [...presetLevels.warm];
+      function saveSound() {
+        try {
+          localStorage.setItem(SOUND_KEY, JSON.stringify({
+            levels, attack: Number(attackInput.value), release: Number(releaseInput.value),
+            volume: Number(volumeInput.value), fold: Number(foldInput.value),
+            drive: Number(driveInput.value)
+          }));
+        } catch (_) { /* storage may be disabled */ }
+      }
       let baseMidi = 48; // C3; piano is C3 through C5
       let audioCtx = null, master = null, compressor = null, periodicWave = null;
       let foldCurve = null, driveCurve = null;
@@ -322,6 +344,7 @@
           voice.overdrive.setAmount(overdrive);
         }
         drawWave();
+        saveSound();
       }
       function setVolume() {
         document.getElementById('volumeOut').textContent = volumeInput.value + '%';
@@ -478,6 +501,7 @@
             choosePreset(null);
             updatePeriodicWave();
             drawWave();
+            saveSound();
           });
           slot.append(value, range, label, frequency);
           root.append(slot);
@@ -491,7 +515,7 @@
       function applyPreset(name) {
         levels = [...presetLevels[name]];
         sliders.forEach((slider, i) => { slider.range.value = String(levels[i]); slider.value.textContent = levels[i] + '%'; });
-        choosePreset(name); updatePeriodicWave(); drawWave();
+        choosePreset(name); updatePeriodicWave(); drawWave(); saveSound();
       }
       function drawWave() {
         const bounds = scope.getBoundingClientRect();
@@ -538,9 +562,9 @@
       document.querySelectorAll('.preset').forEach(button => button.addEventListener('click', () => applyPreset(button.dataset.preset)));
       document.getElementById('octaveDown').addEventListener('click', () => { if (baseMidi > 36) { baseMidi -= 12; buildKeyboard(); } });
       document.getElementById('octaveUp').addEventListener('click', () => { if (baseMidi < 60) { baseMidi += 12; buildKeyboard(); } });
-      attackInput.addEventListener('input', () => { document.getElementById('attackOut').textContent = attackInput.value + ' ms'; });
-      releaseInput.addEventListener('input', () => { document.getElementById('releaseOut').textContent = releaseInput.value + ' ms'; });
-      volumeInput.addEventListener('input', setVolume);
+      attackInput.addEventListener('input', () => { document.getElementById('attackOut').textContent = attackInput.value + ' ms'; saveSound(); });
+      releaseInput.addEventListener('input', () => { document.getElementById('releaseOut').textContent = releaseInput.value + ' ms'; saveSound(); });
+      volumeInput.addEventListener('input', () => { setVolume(); saveSound(); });
       foldInput.addEventListener('input', updateEffects);
       driveInput.addEventListener('input', updateEffects);
       window.addEventListener('keydown', event => {
@@ -561,7 +585,20 @@
       window.addEventListener('blur', stopAll);
       document.addEventListener('visibilitychange', () => { if (document.hidden) stopAll(); });
       window.addEventListener('resize', drawWave);
+      for (const [input, out, min, max, suffix] of [
+        [attackInput, "attackOut", 5, 1000, " ms"],
+        [releaseInput, "releaseOut", 30, 2000, " ms"],
+        [volumeInput, "volumeOut", 0, 100, "%"],
+        [foldInput, "foldOut", 0, 100, "%"],
+        [driveInput, "driveOut", 0, 100, "%"]
+      ]) {
+        const saved = previousSound?.[input.id];
+        if (Number.isFinite(saved)) input.value = String(Math.min(max, Math.max(min, saved)));
+        document.getElementById(out).textContent = input.value + suffix;
+      }
       buildHarmonics(); buildKeyboard(); drawWave();
+      const match = Object.entries(presetLevels).find(([, vals]) => vals.every((v, i) => v === levels[i]));
+      choosePreset(match ? match[0] : null);
     })();
   </script>
 </body>
